@@ -606,9 +606,9 @@ function openTitle() {
   titleOpen = true;
   titleEl.classList.remove('hidden');
   document.body.classList.add('title-open');
+  // This can be called from inside a wasm frame (Save & Quit), so never call
+  // back into wasm here. The save lives in localStorage and is already written.
   updateSaveNote();
-  const has = wasmReady ? !!wasm.game_has_save() : false;
-  updateSaveNote(has);
 }
 
 function hideTitle() {
@@ -959,6 +959,7 @@ window.__terra = {
     teleport(x, y) { wasm.game_debug_teleport(x, y); },
     time(t) { wasm.game_debug_time(t); },
     heal() { wasm.game_debug_heal(); },
+    hurt(amount) { wasm.game_debug_hurt(amount); },
     spawnBoss() { wasm.game_debug_spawn_boss(); },
     killBoss() { wasm.game_debug_kill_boss(); },
     craft(index) { wasm.game_debug_craft(index); },

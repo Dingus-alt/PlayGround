@@ -397,10 +397,9 @@ body.title-open #touch { display: none; }
   .title-actions { gap: 9px; }
   .feature-row { display: none; }
   .footnote { font-size: 10px; }
-}
-
-@media (pointer: fine) {
-  body.touch #touch { display: none; }
+  /* Portrait phones: keep the utility buttons clear of the health/day HUD. */
+  .touch-utility { top: 146px; right: 8px; gap: 6px; }
+  .touch-utility button { width: 36px; height: 36px; border-radius: 10px; font-size: 17px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

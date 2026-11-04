@@ -220,6 +220,14 @@ pub extern "C" fn game_debug_heal() {
 }
 
 #[no_mangle]
+pub extern "C" fn game_debug_hurt(amount: f32) {
+    with_game(|g| {
+        g.player.hp = (g.player.hp - amount.max(0.0)).max(0.0);
+        g.player.invuln = 0.0;
+    });
+}
+
+#[no_mangle]
 pub extern "C" fn game_debug_spawn_boss() {
     with_game(|g| {
         g.inventory.add(items::ItemId::Crown, 1);

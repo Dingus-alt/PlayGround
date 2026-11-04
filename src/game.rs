@@ -359,7 +359,6 @@ impl Game {
         self.inv_open = false;
         self.map_open = false;
         self.show_help = false;
-        self.stats.play_time = 0.0;
         if self.player.hp <= 0.0 {
             self.player.respawn();
         }
@@ -799,7 +798,7 @@ impl Game {
         self.mining = None;
         self.boss_active = false;
         self.boss_wave_flags = 0;
-        self.victory_timer = 0.0;
+        self.victory_timer = if self.boss_defeated { f32::MAX } else { 0.0 };
         self.center_camera();
         self.banner("BACK ON YOUR FEET", "Try a torch this time", 0.8, 0xA8E8FF);
         self.save_game();
@@ -818,7 +817,7 @@ impl Game {
             || input.press(KEY_SPACE)
         {
             self.mode = Mode::Playing;
-            self.victory_timer = 999.0;
+            self.victory_timer = f32::MAX;
             self.banner("THE KING IS DEAD", "Keep building your world", 1.0, 0xFFD75E);
         }
         if input.mouse_pressed && layout.quit.contains(input.mouse) {
@@ -1760,9 +1759,6 @@ impl Game {
     // ------------------------------------------------------------------
 
     pub fn save_game(&mut self) {
-        if self.mode == Mode::Attract || self.world.modified.is_empty() && self.stats.play_time < 1.0 {
-            // Still save a fresh world once the player has actually started.
-        }
         let mut s = String::new();
         s.push_str(SAVE_MAGIC);
         s.push('\n');
@@ -1790,15 +1786,17 @@ impl Game {
             self.stats.deaths,
             self.stats.play_time
         ));
+        s.push_str(&format!("sel={}\n", self.inventory.selected));
         s.push_str("inv=");
         let mut first = true;
-        for slot in &self.inventory.slots {
+        for (i, slot) in self.inventory.slots.iter().enumerate() {
             if let Some(st) = slot {
                 if !first {
                     s.push(';');
                 }
                 first = false;
-                s.push_str(&format!("{}:{}", st.id as u8, st.count));
+                // slot:id:count keeps every item in its original position.
+                s.push_str(&format!("{}:{}:{}", i, st.id as u8, st.count));
             }
         }
         s.push('\n');
@@ -1811,6 +1809,7 @@ impl Game {
         }
         s.push('\n');
         gfx::save(s.as_bytes());
+        self.has_save = true;
         self.saved = Some(SaveData::from_game(self));
     }
 
@@ -1832,10 +1831,12 @@ impl Game {
     fn apply_save(&mut self, save: SaveData) {
         self.seed = save.seed;
         self.world = World::generate(save.seed);
-        for (x, y, t) in save.mods {
+        for &(x, y, t) in &save.mods {
             self.world.set_tile(x, y, t);
         }
-        self.world.modified.clear();
+        // set_tile records each restored edit in `modified`; replace that list
+        // with the saved one so it is neither duplicated nor lost.
+        self.world.modified = save.mods;
         self.time = save.time;
         self.day = save.day;
         self.flags = save.flags;
@@ -1846,24 +1847,31 @@ impl Game {
         self.stats = save.stats;
         self.inventory = Inventory::new();
         self.inventory.slots = vec![None; INV_SLOTS];
-        for (i, (id, count)) in save.inv.into_iter().enumerate() {
-            if i < INV_SLOTS {
-                if let Some(id) = ItemId::from_u8(id) {
-                    self.inventory.slots[i] = Some(ItemStack { id, count });
-                }
+        for &(slot, id, count) in &save.inv {
+            if let Some(id) = ItemId::from_u8(id) {
+                let slot = (slot as usize).min(INV_SLOTS - 1);
+                self.inventory.slots[slot] = Some(ItemStack { id, count });
             }
         }
+        self.inventory.selected = save.selected.min(HOTBAR - 1);
         self.player = Player::new(self.world.spawn);
         self.player.pos = save.player_pos;
         self.player.hp = save.hp.clamp(1.0, self.player.max_hp);
         self.player.respawn = save.player_pos;
         self.boss_defeated = save.flags.boss_defeated;
         self.boss_active = false;
+        // A completed save must not replay the victory screen on load.
+        self.victory_timer = if self.boss_defeated { f32::MAX } else { 0.0 };
         self.enemies.clear();
         self.drops.clear();
+        self.bombs.clear();
         self.particles.clear();
         self.texts.clear();
         self.mining = None;
+        self.death_timer = 0.0;
+        self.boss_wave_flags = 0;
+        self.boss_intro = 0.0;
+        self.hurt_vignette = 0.0;
         self.center_camera();
         self.was_night = self.is_night();
         gfx::minimap(self.world.minimap.as_ptr(), world::W as u32, world::H as u32);
@@ -1946,7 +1954,9 @@ pub struct SaveData {
     pub hp: f32,
     pub flags: QuestFlags,
     pub stats: Stats,
-    pub inv: Vec<(u8, u32)>,
+    /// (slot, item id, count)
+    pub inv: Vec<(u8, u8, u32)>,
+    pub selected: usize,
     pub mods: Vec<(i32, i32, u8)>,
 }
 
@@ -1965,10 +1975,12 @@ impl SaveData {
             flags: QuestFlags::default(),
             stats: Stats::default(),
             inv: Vec::new(),
+            selected: 0,
             mods: Vec::new(),
         };
         let mut has_seed = false;
         let mut has_player = false;
+        let mut next_legacy_slot: u8 = 0;
         for line in lines {
             if let Some(v) = line.strip_prefix("seed=") {
                 save.seed = v.parse().ok()?;
@@ -2007,16 +2019,36 @@ impl SaveData {
                         play_time: s[4].parse().unwrap_or(0.0),
                     };
                 }
+            } else if let Some(v) = line.strip_prefix("sel=") {
+                save.selected = v.parse().unwrap_or(0);
             } else if let Some(v) = line.strip_prefix("inv=") {
                 for part in v.split(';') {
                     if part.is_empty() {
                         continue;
                     }
                     let kv: Vec<&str> = part.split(':').collect();
-                    if kv.len() == 2 {
-                        if let (Ok(id), Ok(count)) = (kv[0].parse::<u8>(), kv[1].parse::<u32>()) {
-                            save.inv.push((id, count));
+                    if kv.len() == 3 {
+                        // New format: slot:id:count
+                        if let (Ok(slot), Ok(id), Ok(count)) = (
+                            kv[0].parse::<u8>(),
+                            kv[1].parse::<u8>(),
+                            kv[2].parse::<u32>(),
+                        ) {
+                            save.inv.push((slot, id, count));
+                            next_legacy_slot = slot.saturating_add(1);
                         }
+                    } else if kv.len() == 2 {
+                        // Legacy format: id:count, packed in order.
+                        if let (Ok(id), Ok(count)) = (kv[0].parse::<u8>(), kv[1].parse::<u32>()) {
+                            save.inv.push((next_legacy_slot, id, count));
+                            next_legacy_slot = next_legacy_slot.saturating_add(1);
+                        }
+                    }
+                }
+                if save.inv.iter().any(|&(slot, _, _)| slot as usize >= INV_SLOTS) {
+                    save.inv.retain(|&(slot, _, _)| (slot as usize) < INV_SLOTS);
+                    for (i, entry) in save.inv.iter_mut().enumerate() {
+                        entry.0 = i as u8;
                     }
                 }
             } else if let Some(v) = line.strip_prefix("mods=") {
@@ -2051,8 +2083,8 @@ impl SaveData {
             .inventory
             .slots
             .iter()
-            .flatten()
-            .map(|s| (s.id as u8, s.count))
+            .enumerate()
+            .filter_map(|(i, s)| s.as_ref().map(|s| (i as u8, s.id as u8, s.count)))
             .collect();
         SaveData {
             seed: game.seed,
@@ -2063,6 +2095,7 @@ impl SaveData {
             flags: game.flags.clone(),
             stats: game.stats.clone(),
             inv,
+            selected: game.inventory.selected,
             mods: game.world.modified.clone(),
         }
     }
