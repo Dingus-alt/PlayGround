@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#070a12" />
+  <meta name="description" content="Terraforge — a Terraria-inspired sandbox adventure built in Rust and compiled to WebAssembly." />
+  <title>Terraforge — Dig. Build. Survive the night.</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b1018'/%3E%3Cpath d='M8 44h48v14H8z' fill='%235a3a22'/%3E%3Cpath d='M8 44h48v5H8z' fill='%234c9a4a'/%3E%3Cpath d='M30 10l8 8-14 14-8-8z' fill='%23e8eef6'/%3E%3Cpath d='M20 30l6 6-9 9-6-6z' fill='%23a97642'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="web/style.css" />
+</head>
+<body>
+  <div id="app">
+    <canvas id="game" aria-label="Terraforge game canvas"></canvas>
+
+    <div id="title" class="overlay">
+      <div class="title-card">
+        <div class="eyebrow"><span class="dot"></span> A RUST-WRITTEN SANDBOX</div>
+        <h1 class="logo">TERRA<span>FORGE</span></h1>
+        <p class="tagline">Dig. Build. Survive the night.</p>
+        <div class="title-actions">
+          <button id="play" class="btn primary" type="button">Play</button>
+          <button id="new-world" class="btn ghost" type="button">New World</button>
+        </div>
+        <p id="save-note" class="save-note" hidden>Saved world found — Play continues where you left off.</p>
+
+        <div class="control-grid">
+          <div><kbd>A</kbd><kbd>D</kbd> move</div>
+          <div><kbd>Space</kbd> jump / swim</div>
+          <div><kbd>LMB</kbd> mine, attack, place</div>
+          <div><kbd>RMB</kbd> place block</div>
+          <div><kbd>1</kbd>–<kbd>0</kbd> hotbar</div>
+          <div><kbd>E</kbd> inventory &amp; crafting</div>
+          <div><kbd>M</kbd> world map</div>
+          <div><kbd>Esc</kbd> pause</div>
+        </div>
+
+        <div class="feature-row">
+          <span>Procedural world</span><i></i><span>Caves &amp; ores</span><i></i><span>A king to topple</span>
+        </div>
+        <p class="footnote">Rust → WebAssembly · Canvas2D · saved locally in your browser</p>
+      </div>
+    </div>
+
+    <div id="touch" aria-hidden="true">
+      <div class="touch-utility">
+        <button id="m-bag" type="button" aria-label="Inventory">▤</button>
+        <button id="m-map" type="button" aria-label="Map">◎</button>
+        <button id="m-pause" type="button" aria-label="Pause">Ⅱ</button>
+        <button id="m-mute" type="button" aria-label="Mute">♪</button>
+      </div>
+      <div class="touch-move">
+        <button id="m-left" type="button" aria-label="Move left">◀</button>
+        <button id="m-right" type="button" aria-label="Move right">▶</button>
+      </div>
+      <div class="touch-action">
+        <button id="m-place" type="button" aria-label="Select placeable">▣</button>
+        <button id="m-jump" type="button" aria-label="Jump">▲</button>
+      </div>
+    </div>
+
+    <div id="loading">
+      <div class="spinner"></div>
+      <p>Forging a world…</p>
+    </div>
+    <div id="error" hidden></div>
+  </div>
+  <script type="module" src="web/main.js"></script>
+</body>
+</html>
